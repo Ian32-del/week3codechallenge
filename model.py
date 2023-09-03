@@ -16,6 +16,15 @@ class Restaurant(Base):
 
     reviews = relationship('Review ' , bankref='restaurant')
 
+    def reviews (self , session):
+        return session.query(Review).filter_by(restaurant_id=self.id).all()
+    
+    def customers(self,session):
+        customer_ids = session.query(Review.customer_id).filter_by(restaurant_id=self.id).distinct().all()
+        customer_ids = [customer_id[0] for customer_id in customer_ids]
+        return session.query(Customer).filter(Customer.id.in_(customer_ids)).all()
+    
+
 class Customer(Base):
     __tablename__ = 'customers'
 
