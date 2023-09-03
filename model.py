@@ -35,3 +35,19 @@ class Review(Base):
 
     restaurant_id = Column(Integer , ForeignKey('restaurants.id') , nullable=False)
     customer_id = Column(Integer , ForeignKey('customers.id') , nullable=False)
+    
+
+    def customer (self,session):
+        return session.query(Customer).filter_by(id=self.customer_id).first()
+    
+    def restaurant(self,session):
+        return session.query(Restaurant).filter_by(id=self.restaurant_id).first()
+    
+
+Session = sessionmaker(bind=engine)
+session = Session()
+
+your_review_instance = session.query(Review).first()
+
+customer_instance = your_review_instance.customer(session)
+restaurant_instance = your_review_instance.restaurant(session)
