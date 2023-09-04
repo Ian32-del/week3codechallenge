@@ -39,8 +39,34 @@ class Customer(Base):
 
     def restaurants (self,session):
         restaurant_ids = (
-            sessio
+            session.query(Review.restaurant_id)
+            .filter_by(customer_id=self.id)
+            .distinct()
+            .all()
         )
+        restaurant_ids = [restaurant_id[0]for restaurant_id in restaurant_ids]
+        return session.query(Restaurant).filter(Restaurant.id.in_(restaurant_ids)).all()
+    
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+    
+    def favorite_restaurant(self,session):
+        highest_rating = 0
+        favorite = None
+        for review in self.reviews(session):
+            if review.star_rating > highest_rating:
+                highest_rating = review.star_rating
+                favorite = review.restaurant(session)
+        return favorite
+    def add_review(self,session,restaurant , reting):
+        new_review = Review(star_rating=rating ,retaurant=restaurant, customer=self)
+        session.add(new_review)
+        session.commit()
+
+    def delete_reviews(self, session, restaurant):
+        session.query(Review).filter_by(customer_id=self.id, restaurant_id=restaurant.id).delete()
+        session.commit()
+
 
 
 class Review(Base):
@@ -72,6 +98,12 @@ restaurant_instance = your_review_instance.restaurant(session)
 first_restaurant = session.query(Restaurant).first()
 restaurant_reviews = first_restaurant.reviews(session)
 restaurant_customers = first_restaurant.customers(session)
+
+
+your_review_instance = session.query(Review).first()
+customer_instance = your_review_instance.customer(session)
+restaurant_instance = your_review_instance.restaurant(session)
+
 
 print("Review Customer:")
 print(f"Customer ID: {customer_instance.id}, Name: {customer_instance.first_name} {customer_instance.last_name}")
