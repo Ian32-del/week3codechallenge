@@ -22,7 +22,17 @@ class Restaurant(Base):
         customer_ids = session.query(Review.customer_id).filter_by(restaurant_id=self.id).distinct().all()
         customer_ids = [customer_id[0] for customer_id in customer_ids]  # Extract the IDs
         return session.query(Customer).filter(Customer.id.in_(customer_ids)).all()
-
+    
+    @classmethod
+    def fanciest(cls, session):
+        return session.query(cls).order_by(cls.price.desc()).first()
+    
+    def all_reviews(self, session):
+        reviews = session.query(Review).filter_by(restaurant_id=self.id).all()
+        formatted_reviews = []
+        for review in reviews:
+            formatted_reviews.append(review.full_review(session))
+        return formatted_reviews
 
     
 class Customer(Base):
@@ -58,8 +68,8 @@ class Customer(Base):
                 highest_rating = review.star_rating
                 favorite = review.restaurant(session)
         return favorite
-    def add_review(self,session,restaurant , reting):
-        new_review = Review(star_rating=rating ,retaurant=restaurant, customer=self)
+    def add_review(self,session,restaurant , rating):
+        new_review = Review(star_rating=rating, restaurant=restaurant, customer=self)
         session.add(new_review)
         session.commit()
 
@@ -86,6 +96,10 @@ class Review(Base):
     def restaurant(self,session):
         return session.query(Restaurant).filter_by(id=self.restaurant_id).first()
     
+    def full_review(self, session):
+        restaurant_name = self.restaurant(session).name
+        customer_name = self.customer(session).full_name()
+        return f"Review for {restaurant_name} by {customer_name}: {self.star_rating} stars."
 
 Session = sessionmaker(bind=engine)
 session = Session()
