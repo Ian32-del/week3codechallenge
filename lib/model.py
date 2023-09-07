@@ -1,136 +1,119 @@
-from sqlalchemy import create_engine , Column , Integer , String , ForeignKey ,MetaData
+from sqlalchemy import create_engine , Column , Integer , String , ForeignKey ,MetaData ,Table
 from sqlalchemy.orm import relationship , sessionmaker 
 from sqlalchemy.ext.declarative import declarative_base 
 
-engine = create_engine ('sqlite:///restaurant_reviews.db')
+from database import session
 
 Base = declarative_base()
+
+restaurant_customer_association = Table(
+    'restaurant_customer_association',
+    Base.metadata,
+    Column('restaurant_id', Integer, ForeignKey('restaurants.id')),
+    Column('customer_id', Integer, ForeignKey('customers.id'))
+)
+
 
 
 class Restaurant(Base):
     __tablename__ = 'restaurants'
-
-
-    id = Column (Integer , primary_key = True)
-    name = Column (String(255) , nullable=False)
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
     price = Column(Integer)
+    
+    reviews = relationship('Review', back_populates='restaurant')
+    customers = relationship(
+        'Customer',
+        secondary=restaurant_customer_association,
+        back_populates='restaurants'
+    )
+    
+    def __repr__(cls):
+        return f'Restaurant: {cls.name}, price: {cls.price}'
+    
+    def restaurant_reviews(self):
+        reviews = self.reviews 
+        formatted_reviews = [
+            f"Review by {review.customer.full_name()}: {review.star_rating} stars"
+            for review in reviews
+        ]
+        return formatted_reviews
 
-    reviews = relationship('Review ' , backref='restaurant')
-
-    def reviews(self, session):
-        return session.query(Review).filter_by(restaurant_id=self.id).all()
-
-    def customers(self, session):
-        customer_ids = session.query(Review.customer_id).filter_by(restaurant_id=self.id).distinct().all()
-        customer_ids = [customer_id[0] for customer_id in customer_ids]  # Extract the IDs
-        return session.query(Customer).filter(Customer.id.in_(customer_ids)).all()
+    def restaurant_customers(self):
+        return self.customers
     
     @classmethod
-    def fanciest(cls, session):
-        return session.query(cls).order_by(cls.price.desc()).first()
-    
-    def all_reviews(self, session):
-        reviews = session.query(Review).filter_by(restaurant_id=self.id).all()
-        formatted_reviews = []
-        for review in reviews:
-            formatted_reviews.append(review.full_review(session))
-        return formatted_reviews
+    def fanciest(cls):
+        print(session.query(cls).order_by(cls.price.desc()).first())
+         
+
+    def all_reviews(self):
+        return [f"Review for {self.name} by {review.customer.full_name()}: {review.star_rating} stars." for review in self.reviews]
+
 
     
 class Customer(Base):
     __tablename__ = 'customers'
-
-    id = Column (Integer , primary_key=True)
-    first_name = Column(String(255) , nullable=False)
-    last_name = Column(String(255) , nullable=False)
-
-    reviews = relationship('Review', backref='customer')
-
-    def reviews(self , session):
-        return session.query(Review).filter_by(customer_id=self.id).all()
-
-    def restaurants (self,session):
-        restaurant_ids = (
-            session.query(Review.restaurant_id)
-            .filter_by(customer_id=self.id)
-            .distinct()
-            .all()
-        )
-        restaurant_ids = [restaurant_id[0]for restaurant_id in restaurant_ids]
-        return session.query(Restaurant).filter(Restaurant.id.in_(restaurant_ids)).all()
+    id = Column(Integer, primary_key=True)
+    first_name = Column(String)
+    last_name = Column(String)
+    reviews = relationship('Review', back_populates='customer')
+    restaurants = relationship(
+        'Restaurant',
+        secondary=restaurant_customer_association,
+        back_populates='customers'
+    )
     
+    def __repr__(self):
+        return f'Customer: {self.full_name()}'
+
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
     
-    def favorite_restaurant(self,session):
-        highest_rating = 0
-        favorite = None
-        for review in self.reviews(session):
-            if review.star_rating > highest_rating:
-                highest_rating = review.star_rating
-                favorite = review.restaurant(session)
-        return favorite
-    def add_review(self,session,restaurant , rating):
-        new_review = Review(star_rating=rating, restaurant=restaurant, customer=self)
-        session.add(new_review)
+    def customer_reviews(self):
+        reviews = self.reviews
+        formatted_reviews = [
+            f"Review for {review.restaurant.name} by {self.full_name()}: {review.star_rating} stars."
+            for review in reviews
+        ]
+        return formatted_reviews
+
+    def customer_restaurants(self):
+        return self.restaurants
+
+    def favorite_restaurant(self):
+        return session.query(Restaurant).join(Review).filter(Review.customer_id == self.id).order_by(Review.star_rating.desc()).first()
+
+    def add_review(self, restaurant, rating, review):
+        review = Review(customer=self, restaurant=restaurant, star_rating=rating, review=review)
+        session.add(review)
         session.commit()
 
-    def delete_reviews(self, session, restaurant):
-        session.query(Review).filter_by(customer_id=self.id, restaurant_id=restaurant.id).delete()
+    def delete_reviews(self, restaurant):
+        reviews_to_delete = session.query(Review).filter(Review.customer_id == self.id, Review.restaurant_id == restaurant.id).all()
+        for review in reviews_to_delete:
+            session.delete(review)
         session.commit()
-
-
 
 class Review(Base):
     __tablename__ = 'reviews'
-
-    id = Column (Integer , primary_key = True)
+    
+    id = Column(Integer, primary_key=True)
+    review = Column(String)
     star_rating = Column(Integer)
-
-
-    restaurant_id = Column(Integer , ForeignKey('restaurants.id') , nullable=False)
-    customer_id = Column(Integer , ForeignKey('customers.id') , nullable=False)
+    restaurant_id = Column(Integer, ForeignKey('restaurants.id'))
+    customer_id = Column(Integer, ForeignKey('customers.id'))
     
-
-    def customer (self,session):
-        return session.query(Customer).filter_by(id=self.customer_id).first()
+    restaurant = relationship('Restaurant', back_populates='reviews')
+    customer = relationship('Customer', back_populates='reviews')
     
-    def restaurant(self,session):
-        return session.query(Restaurant).filter_by(id=self.restaurant_id).first()
-    
-    def full_review(self, session):
-        restaurant_name = self.restaurant(session).name
-        customer_name = self.customer(session).full_name()
-        return f"Review for {restaurant_name} by {customer_name}: {self.star_rating} stars."
+    def customer_review(self):
+        return self.customer  
+ 
+    def restaurant_review(self):
+        return self.restaurant
 
-Session = sessionmaker(bind=engine)
-session = Session()
+    def full_review(self):
+        return f"Review for {self.restaurant.name} by {self.customer.full_name()}: {self.star_rating} stars."
 
-your_review_instance = session.query(Review).first()
-customer_instance = your_review_instance.customer(session)
-restaurant_instance = your_review_instance.restaurant(session)
-
-
-first_restaurant = session.query(Restaurant).first()
-restaurant_reviews = first_restaurant.reviews(session)
-restaurant_customers = first_restaurant.customers(session)
-
-
-your_review_instance = session.query(Review).first()
-customer_instance = your_review_instance.customer(session)
-restaurant_instance = your_review_instance.restaurant(session)
-
-
-print("Review Customer:")
-print(f"Customer ID: {customer_instance.id}, Name: {customer_instance.first_name} {customer_instance.last_name}")
-
-print("\nReview Restaurant:")
-print(f"Restaurant ID: {restaurant_instance.id}, Name: {restaurant_instance.name}")
-
-print("\nRestaurant Reviews:")
-for review in restaurant_reviews:
-    print(f"Review ID: {review.id}, Star Rating: {review.star_rating}")
-
-print("\nCustomers Who Reviewed the Restaurant:")
-for customer in restaurant_customers:
-    print(f"Customer ID: {customer.id}, Name: {customer.first_name} {customer.last_name}")
